@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Control de Gastos</title>
+  <meta name="theme-color" content="#f2f4f7" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__title">
+      <div class="appname">Control de Gastos</div>
+      <div class="subtitle" id="subtitle">Economía doméstica</div>
+    </div>
+    <div class="topbar__actions">
+      <button class="iconbtn" id="quickAddBtn" title="Añadir movimiento" aria-label="Añadir movimiento">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app" id="app" role="main">
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div class="muted">Cargando…</div>
+    </div>
+  </main>
+
+  <nav class="nav" aria-label="Menú">
+    <a href="#/panel" class="nav__item" data-route="panel" aria-label="Panel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h7V4H4v9zm9 7h7V11h-7v9zM4 20h7v-5H4v5zm9-16v5h7V4h-7z"/></svg>
+      <span>Panel</span>
+    </a>
+    <a href="#/movimientos" class="nav__item" data-route="movimientos" aria-label="Movimientos">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h14v2H7V6zm0 5h14v2H7v-2zm0 5h14v2H7v-2zM3 6h2v2H3V6zm0 5h2v2H3v-2zm0 5h2v2H3v-2z"/></svg>
+      <span>Mov.</span>
+    </a>
+    <a href="#/presupuesto" class="nav__item" data-route="presupuesto" aria-label="Presupuesto">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4V5zm2 2v10h12V7H6zm1 1h6v2H7V8zm0 3h10v2H7v-2z"/></svg>
+      <span>Tope</span>
+    </a>
+    <a href="#/cuentas" class="nav__item" data-route="cuentas" aria-label="Cuentas">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm1 3v6h16v-6H4zm2 4h6v2H6v-2z"/></svg>
+      <span>Cuentas</span>
+    </a>
+    <a href="#/ajustes" class="nav__item" data-route="ajustes" aria-label="Ajustes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.11-.2-.35-.28-.57-.2l-2.39.96c-.5-.38-1.04-.69-1.63-.94l-.36-2.54A.5.5 0 0 0 14 2h-4a.5.5 0 0 0-.49.42l-.36 2.54c-.59.25-1.13.56-1.63.94l-2.39-.96c-.22-.09-.46 0-.57.2L2.71 8.46c-.11.2-.06.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.11.2.35.28.57.2l2.39-.96c.5.38 1.04.69 1.63.94l.36 2.54c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.36-2.54c.59-.25 1.13-.56 1.63-.94l2.39.96c.22.09.46 0 .57-.2l1.92-3.32c.11-.2.06-.47-.12-.61l-2.03-1.58zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5S10.07 8.5 12 8.5s3.5 1.57 3.5 3.5S13.93 15.5 12 15.5z"/></svg>
+      <span>Ajustes</span>
+    </a>
+  </nav>
+
+  <!-- Modal -->
+  <div class="modal__backdrop" id="modalBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal__header">
+        <div class="modal__title" id="modalTitle">Añadir</div>
+        <button class="iconbtn" id="modalCloseBtn" aria-label="Cerrar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.3 5.71a1 1 0 0 1 0 1.41L13.41 12l4.89 4.88a1 1 0 1 1-1.41 1.42L12 13.41l-4.88 4.89a1 1 0 1 1-1.42-1.41L10.59 12 5.7 7.12A1 1 0 0 1 7.12 5.7L12 10.59l4.88-4.89a1 1 0 0 1 1.42.01z"/></svg>
+        </button>
+      </div>
+      <div class="modal__body" id="modalBody"></div>
+      <div class="modal__footer" id="modalFooter"></div>
+    </div>
+  </div>
+
+  <script src="assets/js/utils.js"></script>
+  <script src="assets/js/db.js"></script>
+  <script src="assets/js/xlsx-mini.js"></script>
+  <script src="assets/js/print.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
