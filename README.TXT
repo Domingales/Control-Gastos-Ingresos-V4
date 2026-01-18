@@ -1,4 +1,4 @@
-CONTROL DE GASTOS — v1 (Economía doméstica)
+CONTROL DE GASTOS — v4 (Economía doméstica)
 
 Qué incluye
 - Ingresos y gastos con categorías.
