@@ -1,4 +1,4 @@
-﻿/* app.js - Control de Gastos v1 */
+/* app.js - Control de Gastos v1 */
 (async function(){
   const appEl = document.getElementById("app");
   const loadingEl = document.getElementById("loading");
@@ -653,6 +653,197 @@
     };
   }
 
+
+  // ---------- Modal: Añadir / Borrar cuenta ----------
+  function safeAccountId(){
+    // U.uid() ya se usa para movimientos/transferencias; si no existiera por algún motivo, fallback.
+    try{
+      const u = (typeof U!=="undefined" && typeof U.uid==="function") ? U.uid() : null;
+      if(u) return "acc_"+String(u).replace(/[^a-zA-Z0-9_-]/g,"");
+    }catch(_){}
+    return "acc_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);
+  }
+
+  function normName(s){ return String(s||"").trim().toLowerCase(); }
+
+  function openAddAccountModal(){
+    const nameInp = U.el("input",{class:"input", placeholder:"Nombre de la cuenta…"});
+    const initInp = U.el("input",{class:"input", type:"number", step:"0.01", placeholder:"Saldo inicial (opcional)", value:"0"});
+    const tip = U.el("div",{class:"tiny muted", text:"Consejo: puedes crear varias cuentas (p. ej., 'Banco 1', 'Banco 2', 'Ahorros', etc.)."});
+
+    const saveBtn = U.el("button",{class:"btn primary", text:"Añadir"});
+    const cancelBtn = U.el("button",{class:"btn", text:"Cancelar"});
+
+    const modal = U.openModal({
+      title:"Añadir cuenta",
+      contentNode: U.el("div",{class:"grid", style:"gap:10px"},[
+        U.el("div",{},[U.el("div",{class:"tiny muted",text:"Nombre"}), nameInp]),
+        U.el("div",{},[U.el("div",{class:"tiny muted",text:"Saldo inicial"}), initInp]),
+        tip
+      ]),
+      footerNodes:[cancelBtn, saveBtn]
+    });
+
+    cancelBtn.onclick = ()=> modal.close();
+
+    saveBtn.onclick = async ()=>{
+      const name = String(nameInp.value||"").trim();
+      if(!name){
+        U.toast("Escribe un nombre para la cuenta.");
+        nameInp.focus();
+        return;
+      }
+      const exists = accounts().some(a=> normName(a.name) === normName(name));
+      if(exists){
+        U.toast("Ya existe una cuenta con ese nombre.");
+        nameInp.focus();
+        return;
+      }
+      const initialBalance = ensureNum(initInp.value);
+      const id = safeAccountId();
+
+      state.settings.accounts = [...accounts(), {id, name, initialBalance}];
+      await DB.saveSettings(state.db, state.settings);
+
+      modal.close();
+      U.toast("Cuenta añadida.");
+      await render();
+    };
+  }
+
+  function openDeleteAccountModal(){
+    const accs = accounts();
+
+    if(accs.length<=1){
+      U.toast("No puedes borrar la última cuenta.");
+      return;
+    }
+
+    const sel = U.el("select",{class:"input"});
+    for(const a of accs){
+      sel.appendChild(U.el("option",{value:a.id, text:a.name}));
+    }
+
+    const info = U.el("div",{class:"tiny muted", text:"Selecciona una cuenta para ver su extracto y opciones de borrado."});
+
+    const reassignWrap = U.el("div",{style:"display:none"});
+    const reassignSel = U.el("select",{class:"input"});
+    const reassignHint = U.el("div",{class:"tiny muted", style:"margin-top:6px", text:"Esta cuenta tiene movimientos/transferencias. Para borrarla con seguridad, reasigna su historial a otra cuenta."});
+    reassignWrap.appendChild(U.el("div",{class:"tiny muted", text:"Reasignar historial a:"}));
+    reassignWrap.appendChild(reassignSel);
+    reassignWrap.appendChild(reassignHint);
+
+    let txAll = null;
+    let trAll = null;
+
+    async function ensureAllLoaded(){
+      if(!txAll) txAll = await DB.listAllTx(state.db);
+      if(!trAll) trAll = await DB.listAllTr(state.db);
+    }
+
+    function fillReassignOptions(delId){
+      reassignSel.innerHTML = "";
+      const others = accounts().filter(a=>a.id!==delId);
+      for(const a of others){
+        reassignSel.appendChild(U.el("option",{value:a.id, text:a.name}));
+      }
+    }
+
+    async function refresh(){
+      const delId = sel.value;
+      await ensureAllLoaded();
+
+      const txCount = (txAll||[]).filter(t=>(t.accountId||"cash")===delId).length;
+      const trCount = (trAll||[]).filter(x=>x.fromAccountId===delId || x.toAccountId===delId).length;
+
+      if(txCount===0 && trCount===0){
+        info.textContent = "La cuenta no tiene movimientos ni transferencias asociados. Puedes borrarla.";
+        reassignWrap.style.display = "none";
+      }else{
+        info.textContent = `La cuenta tiene ${txCount} movimientos y ${trCount} transferencias asociados. Para borrarla, debes reasignar ese historial.`;
+        fillReassignOptions(delId);
+        reassignWrap.style.display = "";
+      }
+    }
+
+    sel.addEventListener("change", ()=>{ refresh(); });
+
+    const delBtn = U.el("button",{class:"btn danger", text:"Borrar cuenta"});
+    const cancelBtn = U.el("button",{class:"btn", text:"Cancelar"});
+
+    const modal = U.openModal({
+      title:"Borrar cuenta",
+      contentNode: U.el("div",{class:"grid", style:"gap:10px"},[
+        U.el("div",{},[U.el("div",{class:"tiny muted",text:"Cuenta"}), sel]),
+        info,
+        reassignWrap
+      ]),
+      footerNodes:[cancelBtn, delBtn]
+    });
+
+    cancelBtn.onclick = ()=> modal.close();
+
+    delBtn.onclick = async ()=>{
+      const delId = sel.value;
+
+      if(accounts().length<=1){
+        U.toast("No puedes borrar la última cuenta.");
+        return;
+      }
+
+      await ensureAllLoaded();
+      const txRel = (txAll||[]).filter(t=>(t.accountId||"cash")===delId);
+      const trRel = (trAll||[]).filter(x=>x.fromAccountId===delId || x.toAccountId===delId);
+
+      // Si hay historial, exigimos reasignación (seguro y reversible).
+      let reassignTo = null;
+      if(txRel.length || trRel.length){
+        reassignTo = reassignSel.value;
+        if(!reassignTo){
+          U.toast("Selecciona una cuenta de destino para reasignar.");
+          return;
+        }
+      }
+
+      const ok = await U.confirmDialog({
+        title:"Confirmar borrado",
+        message: (txRel.length || trRel.length)
+          ? "Se reasignará el historial a otra cuenta y luego se borrará la cuenta seleccionada. ¿Continuar?"
+          : "Se borrará la cuenta seleccionada. ¿Continuar?",
+        okText:"Borrar",
+        cancelText:"Cancelar"
+      });
+      if(!ok) return;
+
+      // Reasignación (si procede)
+      if(reassignTo){
+        for(const t of txRel){
+          t.accountId = reassignTo;
+          await DB.putTx(state.db, t);
+        }
+        for(const x of trRel){
+          if(x.fromAccountId===delId) x.fromAccountId = reassignTo;
+          if(x.toAccountId===delId) x.toAccountId = reassignTo;
+          await DB.putTr(state.db, x);
+        }
+      }
+
+      // Borrar cuenta de settings
+      state.settings.accounts = accounts().filter(a=>a.id!==delId);
+
+      // Si la cuenta borrada era la que se usaba por defecto en algún sitio (p. ej., selector inicial),
+      // no hace falta más: los selectores se repintan con render().
+      await DB.saveSettings(state.db, state.settings);
+
+      modal.close();
+      U.toast("Cuenta borrada.");
+      await render();
+    };
+
+    // inicial
+    refresh();
+  }
+
   // ---------- Export (XLSX) builders ----------
   function rowsMovements(txList){
     const rows = [["Fecha","Tipo","Categoría","Cuenta","Nota","Importe"]];
@@ -835,7 +1026,7 @@
     const balancesEnd = snap.snaps.get(endMs) || new Map();
     const balancesNow = snap.now;
 
-const rows = accounts().map(a=>[a.name, U.money((balancesNow.get(a.id)||0), state.settings.currency)]);
+const rows = accounts().map(a=>[a.name, U.money(balances.get(a.id)||0, state.settings.currency)]);
     const html = tableHtml(["Cuenta","Saldo actual"], rows, new Set([1]));
     Print.printHtml({title:"Cuentas", subtitle:`Saldo actual (histórico). Periodo visual: ${label}`, html});
   }
@@ -1164,12 +1355,7 @@ const rows = accounts().map(a=>[a.name, U.money((balancesNow.get(a.id)||0), stat
     const meta = activeRangeMeta();
     const label = meta.label;
 
-    const startMs = meta.start.getTime();
-    const endMs = meta.end.getTime();
-    const snap = await computeBalancesSnapshots([startMs, endMs]);
-    const balancesStart = snap.snaps.get(startMs) || new Map();
-    const balancesEnd = snap.snaps.get(endMs) || new Map();
-    const balancesNow = snap.now;
+    const balances = await computeBalances();
 
     const head = sectionHeader("Cuentas", U.el("div",{class:"row", style:"gap:8px"},[
       rangeControls(),
@@ -1179,13 +1365,15 @@ const rows = accounts().map(a=>[a.name, U.money((balancesNow.get(a.id)||0), stat
         for(const a of accounts()) rows.push([a.name, ensureNum(balancesNow.get(a.id)||0)]);
         XLSXMini.exportXLSX({ filename:`ControlGastos_Cuentas_${label.replace(/\s+/g,"_")}.xlsx`, sheets:[{name:"Cuentas", rows, currencyCols:[1]}] });
       }),
+      U.el("button",{class:"btn small", text:"Añadir cuenta", onclick: ()=> openAddAccountModal()}),
+      U.el("button",{class:"btn danger small", text:"Borrar cuenta", onclick: ()=> openDeleteAccountModal()}),
       U.el("button",{class:"btn primary small", text:"Transferir", onclick: ()=> openTransferModal({})})
     ]));
 
     const cards = U.el("div",{class:"grid cols2"});
 
     for(const a of accounts()){
-      const bal = ensureNum(balancesNow.get(a.id)||0);
+      const bal = ensureNum(balances.get(a.id)||0);
       const card = U.el("div",{class:"card"},[
         U.el("div",{class:"row space"},[
           U.el("div",{class:"h2", text:a.name}),
